@@ -3,7 +3,10 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type DBStorage struct {
@@ -23,7 +26,8 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 		`CREATE TABLE IF NOT EXISTS users (
 			user_id serial, 
 			login text UNIQUE NOT NULL, 
-			password text NOT NULL, 
+			hash text NOT NULL,
+			salt text NOT NULL, 
 			PRIMARY KEY(user_id)
 		)`)
 	if err != nil {
@@ -36,7 +40,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 			order_number integer, 
 			order_time timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP, 
 			order_status text NOT NULL,
-			points_accrued integer NOT NULL,
+			points_accrued integer NOT NULL DEFAULT 0,
 			PRIMARY KEY(order_number)
 		)`)
 	if err != nil {
@@ -70,4 +74,30 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 
 func (db *DBStorage) Close() error {
 	return db.dbHandle.Close()
+}
+
+func (db *DBStorage) AddUser(ctx context.Context, regData RequestRegData) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	salt, err := GenerateRandomString(LengthSalt)
+	if err != nil {
+		return err
+	}
+	result, err := db.dbHandle.ExecContext(ctx,
+		"INSERT INTO users (login, hash, salt) VALUES ($1, $2, $3)",
+		regData.Login, hash(regData.Pwd, salt), salt)
+	if err != nil {
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return errors.New("expected to affect 1 row")
+	}
+
+	return nil
 }
