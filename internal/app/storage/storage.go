@@ -11,9 +11,15 @@ type RequestRegData struct {
 	Pwd   string `json:"password"`
 }
 
+type RequestAuthData struct {
+	Login string `json:"login"`
+	Pwd   string `json:"password"`
+}
+
 type Repositories interface {
 	Close() error
 	AddUser(ctx context.Context, regData RequestRegData) error
+	AuthUser(ctx context.Context, authData RequestAuthData) error
 }
 
 func NewStorage(cfg config.Flags) (Repositories, error) {

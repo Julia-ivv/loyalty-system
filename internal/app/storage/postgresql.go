@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -97,6 +98,27 @@ func (db *DBStorage) AddUser(ctx context.Context, regData RequestRegData) error 
 	}
 	if rows != 1 {
 		return errors.New("expected to affect 1 row")
+	}
+
+	return nil
+}
+
+func (db *DBStorage) AuthUser(ctx context.Context, authData RequestAuthData) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	row := db.dbHandle.QueryRowContext(ctx,
+		"SELECT hash, salt FROM users WHERE login=$1", authData.Login)
+
+	var dbHash, dbSalt string
+	err := row.Scan(&dbHash, &dbSalt)
+	if err != nil {
+		return authorizer.NewAuthError(authorizer.QeuryError, err)
+	}
+
+	newHash := hash(authData.Pwd, dbSalt)
+	if newHash != dbHash {
+		return authorizer.NewAuthError(authorizer.InvalidHash, errors.New("invalid hash"))
 	}
 
 	return nil
