@@ -18,7 +18,7 @@ type RequestAuthData struct {
 
 type Repositories interface {
 	Close() error
-	AddUser(ctx context.Context, regData RequestRegData) error
+	RegUser(ctx context.Context, regData RequestRegData) error
 	AuthUser(ctx context.Context, authData RequestAuthData) error
 }
 

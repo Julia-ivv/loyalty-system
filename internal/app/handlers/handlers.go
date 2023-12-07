@@ -9,6 +9,7 @@ import (
 
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/config"
+	"github.com/Julia-ivv/loyalty-system.git/internal/app/middleware"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/storage"
 	"github.com/go-chi/chi"
 	"github.com/jackc/pgerrcode"
@@ -31,8 +32,8 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 	hs := NewHandlers(repo, cfg)
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
-		r.Post("/api/user/register", hs.userRegistration)
-		r.Post("/api/user/login", hs.userAuthentication)
+		r.Post("/api/user/register", middleware.HandlerWithLogging(hs.userRegistration))
+		r.Post("/api/user/login", middleware.HandlerWithLogging(hs.userAuthentication))
 	})
 
 	return r
@@ -57,7 +58,7 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	err = h.stor.AddUser(req.Context(), reqRegData)
+	err = h.stor.RegUser(req.Context(), reqRegData)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
@@ -68,6 +69,25 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 			return
 		}
 	}
+
+	err = h.stor.AuthUser(req.Context(), storage.RequestAuthData{Login: reqRegData.Login, Pwd: reqRegData.Pwd})
+	if err != nil {
+		var authErr *authorizer.AuthErr
+		if (errors.As(err, &authErr)) && (authErr.ErrType == authorizer.InvalidHash) {
+			http.Error(res, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tokenString, err := authorizer.BuildToken(reqRegData.Login, reqRegData.Pwd)
+	http.SetCookie(res, &http.Cookie{
+		Name:    authorizer.AccessToken,
+		Value:   tokenString,
+		Expires: time.Now().Add(authorizer.TokenExp),
+	})
+
 	res.WriteHeader(http.StatusOK)
 }
 

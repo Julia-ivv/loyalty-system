@@ -77,7 +77,7 @@ func (db *DBStorage) Close() error {
 	return db.dbHandle.Close()
 }
 
-func (db *DBStorage) AddUser(ctx context.Context, regData RequestRegData) error {
+func (db *DBStorage) RegUser(ctx context.Context, regData RequestRegData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
