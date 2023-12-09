@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
@@ -11,16 +12,17 @@ func HandlerWithAuth(h http.HandlerFunc) http.HandlerFunc {
 		func(res http.ResponseWriter, req *http.Request) {
 			token, err := req.Cookie(authorizer.AccessToken)
 			if err != nil {
-				http.Error(res, "401 Unauthorized", http.StatusUnauthorized)
+				http.Error(res, err.Error(), http.StatusUnauthorized)
 				return
 			}
 
-			_, _, err = authorizer.GetUserDataFromToken(token.Value)
+			login, _, err := authorizer.GetUserDataFromToken(token.Value)
 			if err != nil {
-				http.Error(res, "401 Unauthorized", http.StatusUnauthorized)
+				http.Error(res, err.Error(), http.StatusUnauthorized)
 				return
 			}
+			newctx := context.WithValue(req.Context(), authorizer.UserContextKey, login)
 
-			h.ServeHTTP(res, req)
+			h.ServeHTTP(res, req.WithContext(newctx))
 		})
 }

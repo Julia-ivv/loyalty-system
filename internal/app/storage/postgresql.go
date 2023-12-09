@@ -7,7 +7,19 @@ import (
 	"time"
 
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
+	"github.com/jackc/pgerrcode"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+type OrderStatus string
+
+const (
+	NewOrder        OrderStatus = "NEW"
+	OrderRegistered OrderStatus = "REGISTERED"
+	OrderProcessing OrderStatus = "PROCESSING"
+	OrderInvalid    OrderStatus = "INVALID"
+	OrderProcessed  OrderStatus = "PROCESSED"
 )
 
 type DBStorage struct {
@@ -37,10 +49,10 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 
 	_, err = db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS orders (
-			user_id integer REFERENCES users(user_id), 
-			order_number integer, 
+			user_id integer NOT NULL REFERENCES users(user_id), 
+			order_number text, 
 			order_time timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP, 
-			order_status text NOT NULL,
+			order_status text,
 			points_accrued integer NOT NULL DEFAULT 0,
 			PRIMARY KEY(order_number)
 		)`)
@@ -50,8 +62,8 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 
 	_, err = db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS points_used (
-			user_id integer REFERENCES users(user_id), 
-			order_number integer, 
+			user_id integer NOT NULL REFERENCES users(user_id), 
+			order_number text, 
 			points integer NOT NULL,
 			time_of_used timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY(order_number)
@@ -121,5 +133,44 @@ func (db *DBStorage) AuthUser(ctx context.Context, authData RequestAuthData) err
 		return authorizer.NewAuthError(authorizer.InvalidHash, errors.New("invalid hash"))
 	}
 
+	return nil
+}
+
+func (db *DBStorage) PostOrder(ctx context.Context, orderNumber string, userLogin string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	result, err := db.dbHandle.ExecContext(ctx,
+		`INSERT INTO orders (user_id , order_number, order_status) 
+		VALUES ((SELECT user_id FROM users WHERE login = $1), $2, $3)`,
+		userLogin, orderNumber, NewOrder)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			row := db.dbHandle.QueryRowContext(ctx,
+				`SELECT login FROM users INNER JOIN orders 
+				ON users.user_id = orders.user_id 
+				WHERE orders.order_number = $1`, orderNumber)
+			var userOrderLogin string
+			errScan := row.Scan(&userOrderLogin)
+			if errScan != nil {
+				return err
+			}
+			if userOrderLogin != userLogin {
+				return NewStorError(UploadByAnotherUser, err)
+			}
+			return NewStorError(UploadByThisUser, err)
+		}
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return errors.New("expected to affect 1 row")
+	}
+
+	// если все нормально, то делаем запрос в систему начислений
 	return nil
 }

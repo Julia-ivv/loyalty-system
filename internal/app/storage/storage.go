@@ -20,6 +20,7 @@ type Repositories interface {
 	Close() error
 	RegUser(ctx context.Context, regData RequestRegData) error
 	AuthUser(ctx context.Context, authData RequestAuthData) error
+	PostOrder(ctx context.Context, orderNumber string, userLogin string) error
 }
 
 func NewStorage(cfg config.Flags) (Repositories, error) {

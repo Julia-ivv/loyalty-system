@@ -34,6 +34,7 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 	r.Route("/", func(r chi.Router) {
 		r.Post("/api/user/register", middleware.HandlerWithLogging(hs.userRegistration))
 		r.Post("/api/user/login", middleware.HandlerWithLogging(hs.userAuthentication))
+		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postOrder)))
 	})
 
 	return r
@@ -128,4 +129,47 @@ func (h *Handlers) userAuthentication(res http.ResponseWriter, req *http.Request
 		Expires: time.Now().Add(authorizer.TokenExp),
 	})
 	res.WriteHeader(http.StatusOK)
+}
+
+func (h *Handlers) postOrder(res http.ResponseWriter, req *http.Request) {
+	reqBody, err := io.ReadAll(req.Body)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if len(reqBody) == 0 {
+		http.Error(res, "request with empty body", http.StatusBadRequest)
+		return
+	}
+
+	orderNum := string(reqBody)
+	isValidNum, err := LuhnCheck(orderNum)
+	if (err != nil) || !isValidNum {
+		http.Error(res, "incorrect order number format", http.StatusUnprocessableEntity)
+		return
+	}
+
+	value := req.Context().Value(authorizer.UserContextKey)
+	if value == nil {
+		http.Error(res, "500 internal server error", http.StatusInternalServerError)
+		return
+	}
+	userLogin := value.(string)
+
+	err = h.stor.PostOrder(req.Context(), orderNum, userLogin)
+	if err != nil {
+		var postErr *storage.StorErr
+		if errors.As(err, &postErr) && postErr.ErrType == storage.UploadByAnotherUser {
+			http.Error(res, err.Error(), http.StatusConflict)
+			return
+		}
+		if errors.As(err, &postErr) && postErr.ErrType == storage.UploadByThisUser {
+			res.WriteHeader(http.StatusOK)
+			return
+		}
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	res.WriteHeader(http.StatusAccepted)
 }

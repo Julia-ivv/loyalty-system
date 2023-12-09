@@ -16,8 +16,8 @@ const UserContextKey key = "user"
 
 type Claims struct {
 	jwt.RegisteredClaims
-	login string
-	pwd   string
+	Login string
+	Pwd   string
 }
 
 func BuildToken(userLogin, userPwd string) (tokenString string, err error) {
@@ -26,8 +26,8 @@ func BuildToken(userLogin, userPwd string) (tokenString string, err error) {
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenExp)),
 			},
-			login: userLogin,
-			pwd:   userPwd,
+			Login: userLogin,
+			Pwd:   userPwd,
 		})
 	tokenString, err = token.SignedString([]byte(SecretKey))
 	if err != nil {
@@ -44,6 +44,5 @@ func GetUserDataFromToken(tokenString string) (userLogin string, userPwd string,
 	if (err != nil) || (!token.Valid) {
 		return "", "", err
 	}
-
-	return claims.login, claims.pwd, nil
+	return claims.Login, claims.Pwd, nil
 }
