@@ -51,7 +51,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 		`CREATE TABLE IF NOT EXISTS orders (
 			user_id integer NOT NULL REFERENCES users(user_id), 
 			order_number text, 
-			order_time timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP, 
+			order_time timestamptz (0) NOT NULL DEFAULT CURRENT_TIMESTAMP, 
 			order_status text,
 			points_accrued integer NOT NULL DEFAULT 0,
 			PRIMARY KEY(order_number)
@@ -65,7 +65,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 			user_id integer NOT NULL REFERENCES users(user_id), 
 			order_number text, 
 			points integer NOT NULL,
-			time_of_used timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			time_of_used timestamptz (0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY(order_number)
 		)`)
 	if err != nil {
@@ -173,4 +173,37 @@ func (db *DBStorage) PostOrder(ctx context.Context, orderNumber string, userLogi
 
 	// если все нормально, то делаем запрос в систему начислений
 	return nil
+}
+
+func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]ResponseOrder, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	rows, err := db.dbHandle.QueryContext(ctx,
+		`SELECT o.order_number, o.order_time, o.order_status, o.points_accrued 
+		FROM orders o INNER JOIN users u
+		ON o.user_id = u.user_id
+		WHERE u.login = $1
+		ORDER BY o.order_time`, userLogin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var respOrders []ResponseOrder
+	for rows.Next() {
+		var ord ResponseOrder
+		err = rows.Scan(&ord.Number, &ord.UploadedTime, &ord.Status, &ord.Accrual)
+		if err != nil {
+			return nil, err
+		}
+		respOrders = append(respOrders, ord)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return respOrders, nil
 }

@@ -35,6 +35,7 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 		r.Post("/api/user/register", middleware.HandlerWithLogging(hs.userRegistration))
 		r.Post("/api/user/login", middleware.HandlerWithLogging(hs.userAuthentication))
 		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postOrder)))
+		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserOrders)))
 	})
 
 	return r
@@ -172,4 +173,37 @@ func (h *Handlers) postOrder(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 	res.WriteHeader(http.StatusAccepted)
+}
+
+func (h *Handlers) getUserOrders(res http.ResponseWriter, req *http.Request) {
+	value := req.Context().Value(authorizer.UserContextKey)
+	if value == nil {
+		http.Error(res, "500 internal server error", http.StatusInternalServerError)
+		return
+	}
+	userLogin := value.(string)
+
+	orders, err := h.stor.GetUserOrders(req.Context(), userLogin)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(orders) == 0 {
+		http.Error(res, "204 No Content", http.StatusNoContent)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusOK)
+
+	resp, err := json.Marshal(orders)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = res.Write(resp)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
