@@ -24,12 +24,18 @@ type ResponseOrder struct {
 	UploadedTime time.Time `json:"uploaded_at"`
 }
 
+type ResponseBalance struct {
+	PointsBalance int `json:"current"`
+	PointsUsed    int `json:"withdrawn"`
+}
+
 type Repositories interface {
 	Close() error
 	RegUser(ctx context.Context, regData RequestRegData) error
 	AuthUser(ctx context.Context, authData RequestAuthData) error
-	PostOrder(ctx context.Context, orderNumber string, userLogin string) error
+	PostUserOrder(ctx context.Context, orderNumber string, userLogin string) error
 	GetUserOrders(ctx context.Context, userLogin string) ([]ResponseOrder, error)
+	GetUserBalance(ctx context.Context, iserLogin string) (ResponseBalance, error)
 }
 
 func NewStorage(cfg config.Flags) (Repositories, error) {

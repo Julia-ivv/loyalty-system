@@ -75,7 +75,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 	_, err = db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS accounts (
 			user_id integer REFERENCES users(user_id), 
-			balance integer,
+			balance integer DEFAULT 0,
 			PRIMARY KEY(user_id)
 		)`)
 	if err != nil {
@@ -103,8 +103,22 @@ func (db *DBStorage) RegUser(ctx context.Context, regData RequestRegData) error 
 	if err != nil {
 		return err
 	}
-
 	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return errors.New("expected to affect 1 row")
+	}
+
+	result, err = db.dbHandle.ExecContext(ctx,
+		`INSERT INTO accounts (user_id) 
+		VALUES ((SELECT user_id FROM users WHERE login = $1))`,
+		regData.Login)
+	if err != nil {
+		return err
+	}
+	rows, err = result.RowsAffected()
 	if err != nil {
 		return err
 	}
@@ -136,7 +150,7 @@ func (db *DBStorage) AuthUser(ctx context.Context, authData RequestAuthData) err
 	return nil
 }
 
-func (db *DBStorage) PostOrder(ctx context.Context, orderNumber string, userLogin string) error {
+func (db *DBStorage) PostUserOrder(ctx context.Context, orderNumber string, userLogin string) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -206,4 +220,23 @@ func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]Res
 	}
 
 	return respOrders, nil
+}
+
+func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (ResponseBalance, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	row := db.dbHandle.QueryRowContext(ctx,
+		`SELECT a.balance, sum(pu.points)  
+		FROM accounts a INNER JOIN points_used pu 
+		ON a.user_id = pu.user_id 
+		WHERE a.user_id = (SELECT user_id FROM users WHERE login = $1) 
+		GROUP BY a.balance`, userLogin)
+	var respBalance ResponseBalance
+	err := row.Scan(&respBalance.PointsBalance, &respBalance.PointsUsed)
+	if err != nil {
+		return ResponseBalance{}, err
+	}
+
+	return respBalance, nil
 }

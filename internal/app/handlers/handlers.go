@@ -34,8 +34,9 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 	r.Route("/", func(r chi.Router) {
 		r.Post("/api/user/register", middleware.HandlerWithLogging(hs.userRegistration))
 		r.Post("/api/user/login", middleware.HandlerWithLogging(hs.userAuthentication))
-		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postOrder)))
+		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postUserOrder)))
 		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserOrders)))
+		r.Get("/api/user/balance", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserBalance)))
 	})
 
 	return r
@@ -132,7 +133,7 @@ func (h *Handlers) userAuthentication(res http.ResponseWriter, req *http.Request
 	res.WriteHeader(http.StatusOK)
 }
 
-func (h *Handlers) postOrder(res http.ResponseWriter, req *http.Request) {
+func (h *Handlers) postUserOrder(res http.ResponseWriter, req *http.Request) {
 	reqBody, err := io.ReadAll(req.Body)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
@@ -158,7 +159,7 @@ func (h *Handlers) postOrder(res http.ResponseWriter, req *http.Request) {
 	}
 	userLogin := value.(string)
 
-	err = h.stor.PostOrder(req.Context(), orderNum, userLogin)
+	err = h.stor.PostUserOrder(req.Context(), orderNum, userLogin)
 	if err != nil {
 		var postErr *storage.StorErr
 		if errors.As(err, &postErr) && postErr.ErrType == storage.UploadByAnotherUser {
@@ -197,6 +198,35 @@ func (h *Handlers) getUserOrders(res http.ResponseWriter, req *http.Request) {
 	res.WriteHeader(http.StatusOK)
 
 	resp, err := json.Marshal(orders)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = res.Write(resp)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Handlers) getUserBalance(res http.ResponseWriter, req *http.Request) {
+	value := req.Context().Value(authorizer.UserContextKey)
+	if value == nil {
+		http.Error(res, "500 internal server error", http.StatusInternalServerError)
+		return
+	}
+	userLogin := value.(string)
+
+	balance, err := h.stor.GetUserBalance(req.Context(), userLogin)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusOK)
+
+	resp, err := json.Marshal(balance)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
