@@ -240,3 +240,69 @@ func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (Resp
 
 	return respBalance, nil
 }
+
+func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdrawData RequestWithdrawData) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	tx, err := db.dbHandle.Begin()
+	if err != nil {
+		return err
+	}
+
+	row := tx.QueryRowContext(ctx,
+		`SELECT a.balance 
+		FROM accounts a INNER JOIN users u 
+		ON a.user_id = u.user_id 
+		WHERE u.login = $1`, userLogin)
+	var balance int
+	err = row.Scan(&balance)
+	if err != nil {
+		tx.Commit()
+		return err
+	}
+	if balance < withdrawData.WithdrawSum {
+		tx.Commit()
+		return NewStorError(NotEnoughPoints, nil)
+	}
+
+	result, err := tx.ExecContext(ctx,
+		`INSERT INTO points_used (user_id, order_number, points) 
+		VALUES ((SELECT user_id FROM users WHERE login = $1), $2, $3)`,
+		userLogin, withdrawData.OrderNumber, withdrawData.WithdrawSum)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if rows != 1 {
+		tx.Rollback()
+		return errors.New("expected to affect 1 row")
+	}
+
+	result, err = tx.ExecContext(ctx,
+		`UPDATE accounts SET balance = $1 
+		WHERE user_id = (SELECT user_id FROM users WHERE login = $2)`,
+		balance-withdrawData.WithdrawSum, userLogin)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	rows, err = result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if rows != 1 {
+		tx.Rollback()
+		return errors.New("expected to affect 1 row")
+	}
+
+	return tx.Commit()
+}

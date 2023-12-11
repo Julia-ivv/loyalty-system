@@ -29,13 +29,19 @@ type ResponseBalance struct {
 	PointsUsed    int `json:"withdrawn"`
 }
 
+type RequestWithdrawData struct {
+	OrderNumber string `json:"order"`
+	WithdrawSum int    `json:"sum"`
+}
+
 type Repositories interface {
 	Close() error
 	RegUser(ctx context.Context, regData RequestRegData) error
 	AuthUser(ctx context.Context, authData RequestAuthData) error
 	PostUserOrder(ctx context.Context, orderNumber string, userLogin string) error
 	GetUserOrders(ctx context.Context, userLogin string) ([]ResponseOrder, error)
-	GetUserBalance(ctx context.Context, iserLogin string) (ResponseBalance, error)
+	GetUserBalance(ctx context.Context, userLogin string) (ResponseBalance, error)
+	PostWithdraw(ctx context.Context, userLogin string, withdrawData RequestWithdrawData) error
 }
 
 func NewStorage(cfg config.Flags) (Repositories, error) {

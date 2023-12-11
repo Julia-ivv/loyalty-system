@@ -37,6 +37,7 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postUserOrder)))
 		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserOrders)))
 		r.Get("/api/user/balance", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserBalance)))
+		r.Post("/api/user/balance/withdraw", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postWithdraw)))
 	})
 
 	return r
@@ -86,9 +87,11 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 
 	tokenString, err := authorizer.BuildToken(reqRegData.Login, reqRegData.Pwd)
 	http.SetCookie(res, &http.Cookie{
-		Name:    authorizer.AccessToken,
-		Value:   tokenString,
-		Expires: time.Now().Add(authorizer.TokenExp),
+		Name:     authorizer.AccessToken,
+		Value:    tokenString,
+		Expires:  time.Now().Add(authorizer.TokenExp),
+		Path:     "/",
+		HttpOnly: true,
 	})
 
 	res.WriteHeader(http.StatusOK)
@@ -236,4 +239,49 @@ func (h *Handlers) getUserBalance(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func (h *Handlers) postWithdraw(res http.ResponseWriter, req *http.Request) {
+	reqJSON, err := io.ReadAll(req.Body)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(reqJSON) == 0 {
+		http.Error(res, "request with empty body", http.StatusBadRequest)
+		return
+	}
+
+	var reqData storage.RequestWithdrawData
+	err = json.Unmarshal(reqJSON, &reqData)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	isValidNum, err := LuhnCheck(reqData.OrderNumber)
+	if (err != nil) || !isValidNum {
+		http.Error(res, "incorrect order number format", http.StatusUnprocessableEntity)
+		return
+	}
+
+	value := req.Context().Value(authorizer.UserContextKey)
+	if value == nil {
+		http.Error(res, "500 internal server error", http.StatusInternalServerError)
+		return
+	}
+	userLogin := value.(string)
+
+	err = h.stor.PostWithdraw(req.Context(), userLogin, reqData)
+	if err != nil {
+		var storErr *storage.StorErr
+		if errors.As(err, &storErr) && storErr.ErrType == storage.NotEnoughPoints {
+			http.Error(res, err.Error(), http.StatusPaymentRequired)
+			return
+		}
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res.WriteHeader(http.StatusOK)
 }

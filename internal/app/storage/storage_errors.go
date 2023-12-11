@@ -7,6 +7,7 @@ type TypeStorErrors string
 const (
 	UploadByThisUser    TypeStorErrors = "the order has already been uploaded by this user"
 	UploadByAnotherUser TypeStorErrors = "the order has already been uploaded by another user"
+	NotEnoughPoints     TypeStorErrors = "there are not enough points on the account"
 )
 
 type StorErr struct {
