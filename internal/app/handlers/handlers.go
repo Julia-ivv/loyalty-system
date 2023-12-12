@@ -38,6 +38,7 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserOrders)))
 		r.Get("/api/user/balance", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserBalance)))
 		r.Post("/api/user/balance/withdraw", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postWithdraw)))
+		r.Get("/api/user/withdrawals", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.GetUserWithdrawals)))
 	})
 
 	return r
@@ -284,4 +285,38 @@ func (h *Handlers) postWithdraw(res http.ResponseWriter, req *http.Request) {
 	}
 
 	res.WriteHeader(http.StatusOK)
+}
+
+func (h *Handlers) GetUserWithdrawals(res http.ResponseWriter, req *http.Request) {
+	value := req.Context().Value(authorizer.UserContextKey)
+	if value == nil {
+		http.Error(res, "500 internal server error", http.StatusInternalServerError)
+		return
+	}
+	userLogin := value.(string)
+
+	resData, err := h.stor.GetUserWithdrawals(req.Context(), userLogin)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if len(resData) == 0 {
+		http.Error(res, "no withdrawals", http.StatusNoContent)
+		return
+	}
+
+	res.Header().Set("Content-Type", "application/json")
+	res.WriteHeader(http.StatusOK)
+
+	resp, err := json.Marshal(resData)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = res.Write(resp)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }

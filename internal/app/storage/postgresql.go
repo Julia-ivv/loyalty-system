@@ -306,3 +306,35 @@ func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdra
 
 	return tx.Commit()
 }
+
+func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) ([]ResponseWithdrawals, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	rows, err := db.dbHandle.QueryContext(ctx,
+		`SELECT pu.order_number, pu.points, pu.time_of_used 
+		FROM points_used pu INNER JOIN users u ON pu.user_id = u.user_id 
+		WHERE u.login = $1 
+		ORDER BY pu.time_of_used`, userLogin)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var respWithdraw []ResponseWithdrawals
+	for rows.Next() {
+		var withdraw ResponseWithdrawals
+		err = rows.Scan(&withdraw.OrderNumber, &withdraw.WithdrawSum, &withdraw.WithdrawTime)
+		if err != nil {
+			return nil, err
+		}
+		respWithdraw = append(respWithdraw, withdraw)
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return respWithdraw, nil
+}

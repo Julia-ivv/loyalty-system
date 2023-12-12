@@ -34,6 +34,12 @@ type RequestWithdrawData struct {
 	WithdrawSum int    `json:"sum"`
 }
 
+type ResponseWithdrawals struct {
+	OrderNumber  string    `json:"order"`
+	WithdrawSum  int       `json:"sum"`
+	WithdrawTime time.Time `json:"processed_at"`
+}
+
 type Repositories interface {
 	Close() error
 	RegUser(ctx context.Context, regData RequestRegData) error
@@ -42,6 +48,7 @@ type Repositories interface {
 	GetUserOrders(ctx context.Context, userLogin string) ([]ResponseOrder, error)
 	GetUserBalance(ctx context.Context, userLogin string) (ResponseBalance, error)
 	PostWithdraw(ctx context.Context, userLogin string, withdrawData RequestWithdrawData) error
+	GetUserWithdrawals(ctx context.Context, userLogin string) ([]ResponseWithdrawals, error)
 }
 
 func NewStorage(cfg config.Flags) (Repositories, error) {
