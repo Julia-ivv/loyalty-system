@@ -32,13 +32,13 @@ func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
 	hs := NewHandlers(repo, cfg)
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
-		r.Post("/api/user/register", middleware.HandlerWithLogging(hs.userRegistration))
-		r.Post("/api/user/login", middleware.HandlerWithLogging(hs.userAuthentication))
-		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postUserOrder)))
-		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserOrders)))
-		r.Get("/api/user/balance", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.getUserBalance)))
-		r.Post("/api/user/balance/withdraw", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.postWithdraw)))
-		r.Get("/api/user/withdrawals", middleware.HandlerWithLogging(middleware.HandlerWithAuth(hs.GetUserWithdrawals)))
+		r.Post("/api/user/register", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(hs.userRegistration)))
+		r.Post("/api/user/login", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(hs.userAuthentication)))
+		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.postUserOrder))))
+		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.getUserOrders))))
+		r.Get("/api/user/balance", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.getUserBalance))))
+		r.Post("/api/user/balance/withdraw", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.postWithdraw))))
+		r.Get("/api/user/withdrawals", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.GetUserWithdrawals))))
 	})
 
 	return r
@@ -75,7 +75,7 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 		}
 	}
 
-	err = h.stor.AuthUser(req.Context(), storage.RequestAuthData{Login: reqRegData.Login, Pwd: reqRegData.Pwd})
+	err = h.stor.AuthUser(req.Context(), storage.RequestAuthData(reqRegData))
 	if err != nil {
 		var authErr *authorizer.AuthErr
 		if (errors.As(err, &authErr)) && (authErr.ErrType == authorizer.InvalidHash) {
@@ -87,6 +87,10 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 	}
 
 	tokenString, err := authorizer.BuildToken(reqRegData.Login, reqRegData.Pwd)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(res, &http.Cookie{
 		Name:     authorizer.AccessToken,
 		Value:    tokenString,
@@ -129,6 +133,10 @@ func (h *Handlers) userAuthentication(res http.ResponseWriter, req *http.Request
 	}
 
 	tokenString, err := authorizer.BuildToken(reqAuthData.Login, reqAuthData.Pwd)
+	if err != nil {
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(res, &http.Cookie{
 		Name:    authorizer.AccessToken,
 		Value:   tokenString,
