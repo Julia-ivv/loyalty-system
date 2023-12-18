@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/Julia-ivv/loyalty-system.git/internal/app/accrual"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/config"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/middleware"
+	"github.com/Julia-ivv/loyalty-system.git/internal/app/models"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/storage"
 	"github.com/go-chi/chi"
 	"github.com/jackc/pgerrcode"
@@ -17,19 +19,21 @@ import (
 )
 
 type Handlers struct {
-	stor storage.Repositories
-	cfg  config.Flags
+	stor        storage.Repositories
+	cfg         config.Flags
+	accrualSyst accrual.AccrualSystem
 }
 
-func NewHandlers(stor storage.Repositories, cfg config.Flags) *Handlers {
+func NewHandlers(stor storage.Repositories, cfg config.Flags, accSyst accrual.AccrualSystem) *Handlers {
 	h := &Handlers{}
 	h.stor = stor
 	h.cfg = cfg
+	h.accrualSyst = accSyst
 	return h
 }
 
-func NewURLRouter(repo storage.Repositories, cfg config.Flags) chi.Router {
-	hs := NewHandlers(repo, cfg)
+func NewURLRouter(repo storage.Repositories, cfg config.Flags, accSyst accrual.AccrualSystem) chi.Router {
+	hs := NewHandlers(repo, cfg, accSyst)
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {
 		r.Post("/api/user/register", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(hs.userRegistration)))
@@ -56,7 +60,7 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	var reqRegData storage.RequestRegData
+	var reqRegData models.RequestRegData
 	err = json.Unmarshal(reqBody, &reqRegData)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
@@ -75,7 +79,7 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 		}
 	}
 
-	err = h.stor.AuthUser(req.Context(), storage.RequestAuthData(reqRegData))
+	err = h.stor.AuthUser(req.Context(), models.RequestAuthData(reqRegData))
 	if err != nil {
 		var authErr *authorizer.AuthErr
 		if (errors.As(err, &authErr)) && (authErr.ErrType == authorizer.InvalidHash) {
@@ -114,7 +118,7 @@ func (h *Handlers) userAuthentication(res http.ResponseWriter, req *http.Request
 		return
 	}
 
-	var reqAuthData storage.RequestAuthData
+	var reqAuthData models.RequestAuthData
 	err = json.Unmarshal(reqBody, &reqAuthData)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
@@ -185,6 +189,8 @@ func (h *Handlers) postUserOrder(res http.ResponseWriter, req *http.Request) {
 		http.Error(res, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	go h.accrualSyst.AddOrderForWork(orderNum)
+
 	res.WriteHeader(http.StatusAccepted)
 }
 
@@ -261,7 +267,7 @@ func (h *Handlers) postWithdraw(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var reqData storage.RequestWithdrawData
+	var reqData models.RequestWithdrawData
 	err = json.Unmarshal(reqJSON, &reqData)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)

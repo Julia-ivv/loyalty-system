@@ -7,19 +7,10 @@ import (
 	"time"
 
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
+	"github.com/Julia-ivv/loyalty-system.git/internal/app/models"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
-)
-
-type OrderStatus string
-
-const (
-	NewOrder        OrderStatus = "NEW"
-	OrderRegistered OrderStatus = "REGISTERED"
-	OrderProcessing OrderStatus = "PROCESSING"
-	OrderInvalid    OrderStatus = "INVALID"
-	OrderProcessed  OrderStatus = "PROCESSED"
 )
 
 type DBStorage struct {
@@ -53,7 +44,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 			order_number text, 
 			order_time timestamptz (0) NOT NULL DEFAULT CURRENT_TIMESTAMP, 
 			order_status text,
-			points_accrued integer NOT NULL DEFAULT 0,
+			points_accrued real NOT NULL DEFAULT 0,
 			PRIMARY KEY(order_number)
 		)`)
 	if err != nil {
@@ -64,7 +55,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 		`CREATE TABLE IF NOT EXISTS points_used (
 			user_id integer NOT NULL REFERENCES users(user_id), 
 			order_number text, 
-			points integer NOT NULL,
+			points real NOT NULL,
 			time_of_used timestamptz (0) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY(order_number)
 		)`)
@@ -75,7 +66,7 @@ func NewDBStorage(DBURI string) (*DBStorage, error) {
 	_, err = db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS accounts (
 			user_id integer REFERENCES users(user_id), 
-			balance integer DEFAULT 0,
+			balance real DEFAULT 0,
 			PRIMARY KEY(user_id)
 		)`)
 	if err != nil {
@@ -89,7 +80,7 @@ func (db *DBStorage) Close() error {
 	return db.dbHandle.Close()
 }
 
-func (db *DBStorage) RegUser(ctx context.Context, regData RequestRegData) error {
+func (db *DBStorage) RegUser(ctx context.Context, regData models.RequestRegData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -129,7 +120,7 @@ func (db *DBStorage) RegUser(ctx context.Context, regData RequestRegData) error 
 	return nil
 }
 
-func (db *DBStorage) AuthUser(ctx context.Context, authData RequestAuthData) error {
+func (db *DBStorage) AuthUser(ctx context.Context, authData models.RequestAuthData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -157,7 +148,7 @@ func (db *DBStorage) PostUserOrder(ctx context.Context, orderNumber string, user
 	result, err := db.dbHandle.ExecContext(ctx,
 		`INSERT INTO orders (user_id , order_number, order_status) 
 		VALUES ((SELECT user_id FROM users WHERE login = $1), $2, $3)`,
-		userLogin, orderNumber, NewOrder)
+		userLogin, orderNumber, models.NewOrder)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
@@ -185,11 +176,10 @@ func (db *DBStorage) PostUserOrder(ctx context.Context, orderNumber string, user
 		return errors.New("expected to affect 1 row")
 	}
 
-	// если все нормально, то делаем запрос в систему начислений
 	return nil
 }
 
-func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]ResponseOrder, error) {
+func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]models.ResponseOrder, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -204,9 +194,9 @@ func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]Res
 	}
 	defer rows.Close()
 
-	var respOrders []ResponseOrder
+	var respOrders []models.ResponseOrder
 	for rows.Next() {
-		var ord ResponseOrder
+		var ord models.ResponseOrder
 		err = rows.Scan(&ord.Number, &ord.UploadedTime, &ord.Status, &ord.Accrual)
 		if err != nil {
 			return nil, err
@@ -222,26 +212,26 @@ func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]Res
 	return respOrders, nil
 }
 
-func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (ResponseBalance, error) {
+func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (models.ResponseBalance, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	row := db.dbHandle.QueryRowContext(ctx,
-		`SELECT a.balance, sum(pu.points)  
-		FROM accounts a INNER JOIN points_used pu 
+		`SELECT a.balance, coalesce(sum(pu.points), 0)  
+		FROM accounts a LEFT JOIN points_used pu 
 		ON a.user_id = pu.user_id 
 		WHERE a.user_id = (SELECT user_id FROM users WHERE login = $1) 
 		GROUP BY a.balance`, userLogin)
-	var respBalance ResponseBalance
+	var respBalance models.ResponseBalance
 	err := row.Scan(&respBalance.PointsBalance, &respBalance.PointsUsed)
 	if err != nil {
-		return ResponseBalance{}, err
+		return models.ResponseBalance{}, err
 	}
 
 	return respBalance, nil
 }
 
-func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdrawData RequestWithdrawData) error {
+func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdrawData models.RequestWithdrawData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -255,7 +245,7 @@ func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdra
 		FROM accounts a INNER JOIN users u 
 		ON a.user_id = u.user_id 
 		WHERE u.login = $1`, userLogin)
-	var balance int
+	var balance float32
 	err = row.Scan(&balance)
 	if err != nil {
 		tx.Commit()
@@ -307,7 +297,7 @@ func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdra
 	return tx.Commit()
 }
 
-func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) ([]ResponseWithdrawals, error) {
+func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) ([]models.ResponseWithdrawals, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -321,9 +311,9 @@ func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) (
 	}
 	defer rows.Close()
 
-	var respWithdraw []ResponseWithdrawals
+	var respWithdraw []models.ResponseWithdrawals
 	for rows.Next() {
-		var withdraw ResponseWithdrawals
+		var withdraw models.ResponseWithdrawals
 		err = rows.Scan(&withdraw.OrderNumber, &withdraw.WithdrawSum, &withdraw.WithdrawTime)
 		if err != nil {
 			return nil, err
@@ -337,4 +327,54 @@ func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) (
 	}
 
 	return respWithdraw, nil
+}
+
+func (db *DBStorage) UpdateUserAccrual(ctx context.Context, newData models.ResponseAccrual) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	tx, err := db.dbHandle.Begin()
+	if err != nil {
+		return err
+	}
+
+	result, err := tx.ExecContext(ctx,
+		`UPDATE orders 
+		SET order_status = $1, points_accrued = $2 
+		WHERE order_number = $3`,
+		newData.OrderStatus, newData.Accrual, newData.OrderNumber)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if rows != 1 {
+		tx.Rollback()
+		return errors.New("expected to affect 1 row")
+	}
+
+	result, err = tx.ExecContext(ctx,
+		`UPDATE accounts SET balance = balance + $1 
+		WHERE user_id = (SELECT user_id FROM orders WHERE order_number = $2)`,
+		newData.Accrual, newData.OrderNumber)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	rows, err = result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	if rows != 1 {
+		tx.Rollback()
+		return errors.New("expected to affect 1 row")
+	}
+
+	return tx.Commit()
 }

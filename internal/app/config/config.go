@@ -9,7 +9,7 @@ import (
 type Flags struct {
 	Host          string `env:"RUN_ADDRESS"`            // -a адрес запуска сервиса, например localhost:8080
 	DBURI         string `env:"DATABASE_URI"`           // -d строка с адресом подключения к БД
-	AccrualSystem string `env:"ACCRUAL_SYSTEM_ADDRESS"` // -r адрес системы расчета начислений
+	AccrualSystem string `env:"ACCRUAL_SYSTEM_ADDRESS"` // -r адрес системы расчета начислений, http://localhost:9090
 }
 
 func NewConfig() *Flags {
