@@ -19,12 +19,12 @@ import (
 )
 
 type Handlers struct {
-	stor        storage.Repositories
+	stor        storage.Repositorier
 	cfg         config.Flags
 	accrualSyst accrual.AccrualSystem
 }
 
-func NewHandlers(stor storage.Repositories, cfg config.Flags, accSyst accrual.AccrualSystem) *Handlers {
+func NewHandlers(stor storage.Repositorier, cfg config.Flags, accSyst accrual.AccrualSystem) *Handlers {
 	h := &Handlers{}
 	h.stor = stor
 	h.cfg = cfg
@@ -32,7 +32,7 @@ func NewHandlers(stor storage.Repositories, cfg config.Flags, accSyst accrual.Ac
 	return h
 }
 
-func NewURLRouter(repo storage.Repositories, cfg config.Flags, accSyst accrual.AccrualSystem) chi.Router {
+func NewURLRouter(repo storage.Repositorier, cfg config.Flags, accSyst accrual.AccrualSystem) chi.Router {
 	hs := NewHandlers(repo, cfg, accSyst)
 	r := chi.NewRouter()
 	r.Route("/", func(r chi.Router) {

@@ -18,12 +18,12 @@ type AccrualSystem struct {
 	AccrualClient  http.Client
 	OrdersChan     chan string
 	AccrualsChan   chan models.ResponseAccrual
-	Repo           storage.Repositories
+	Repo           storage.PointsWorker
 }
 
 func NewAccrualSystem(accrualAddress string, ordersChan chan string,
 	accrualsChan chan models.ResponseAccrual,
-	repo storage.Repositories) *AccrualSystem {
+	repo storage.PointsWorker) *AccrualSystem {
 	return &AccrualSystem{
 		AccrualAddress: accrualAddress,
 		AccrualClient:  http.Client{Timeout: 6 * time.Second},
