@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/logger"
-	"github.com/Julia-ivv/loyalty-system.git/internal/app/models"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/storage"
 )
 
@@ -17,12 +16,12 @@ type AccrualSystem struct {
 	AccrualAddress string
 	AccrualClient  http.Client
 	OrdersChan     chan string
-	AccrualsChan   chan models.ResponseAccrual
+	AccrualsChan   chan storage.ResponseAccrual
 	Repo           storage.PointsWorker
 }
 
 func NewAccrualSystem(accrualAddress string, ordersChan chan string,
-	accrualsChan chan models.ResponseAccrual,
+	accrualsChan chan storage.ResponseAccrual,
 	repo storage.PointsWorker) *AccrualSystem {
 	return &AccrualSystem{
 		AccrualAddress: accrualAddress,
@@ -37,14 +36,14 @@ func (as *AccrualSystem) AddOrderForWork(orderNumber string) {
 	as.OrdersChan <- orderNumber
 }
 
-func (as *AccrualSystem) AddAccrualForUpdate(accrual models.ResponseAccrual) {
+func (as *AccrualSystem) AddAccrualForUpdate(accrual storage.ResponseAccrual) {
 	as.AccrualsChan <- accrual
 }
 
-func (as *AccrualSystem) GetAccrualData(orderNumber string) (models.ResponseAccrual, error) {
+func (as *AccrualSystem) GetAccrualData(orderNumber string) (storage.ResponseAccrual, error) {
 	resp, err := as.AccrualClient.Get(as.AccrualAddress + "/api/orders/" + orderNumber)
 	if err != nil {
-		return models.ResponseAccrual{}, err
+		return storage.ResponseAccrual{}, err
 	}
 
 	switch resp.StatusCode {
@@ -52,22 +51,22 @@ func (as *AccrualSystem) GetAccrualData(orderNumber string) (models.ResponseAccr
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			return models.ResponseAccrual{}, err
+			return storage.ResponseAccrual{}, err
 		}
-		var respAccrual models.ResponseAccrual
+		var respAccrual storage.ResponseAccrual
 		err = json.Unmarshal(body, &respAccrual)
 		if err != nil {
-			return models.ResponseAccrual{}, err
+			return storage.ResponseAccrual{}, err
 		}
 		return respAccrual, nil
 	case 204:
-		return models.ResponseAccrual{}, NewAccrualError(NotRegistered, err)
+		return storage.ResponseAccrual{}, NewAccrualError(NotRegistered, err)
 	case 429:
-		return models.ResponseAccrual{}, NewAccrualError(TooManyRequests, err)
+		return storage.ResponseAccrual{}, NewAccrualError(TooManyRequests, err)
 	case 500:
-		return models.ResponseAccrual{}, NewAccrualError(InternalError, err)
+		return storage.ResponseAccrual{}, NewAccrualError(InternalError, err)
 	default:
-		return models.ResponseAccrual{}, nil
+		return storage.ResponseAccrual{}, nil
 	}
 }
 
@@ -105,11 +104,11 @@ func (as *AccrualSystem) Worker() {
 				if res.OrderNumber == "" {
 					return
 				}
-				if (res.OrderStatus == models.OrderInvalid) || (res.OrderStatus == models.OrderProcessed) {
+				if (res.OrderStatus == storage.OrderInvalid) || (res.OrderStatus == storage.OrderProcessed) {
 					as.AddAccrualForUpdate(res)
 					return
 				}
-				if (res.OrderStatus == models.OrderRegistered) || (res.OrderStatus == models.OrderProcessing) {
+				if (res.OrderStatus == storage.OrderRegistered) || (res.OrderStatus == storage.OrderProcessing) {
 					time.Sleep(statusWaitSec * time.Second)
 					i = retryAttempts
 					continue
@@ -121,7 +120,7 @@ func (as *AccrualSystem) Worker() {
 
 func (as *AccrualSystem) Updater() {
 	for accr := range as.AccrualsChan {
-		go func(ra models.ResponseAccrual) {
+		go func(ra storage.ResponseAccrual) {
 			err := as.Repo.UpdateUserAccrual(context.Background(), ra)
 			if err != nil {
 				logger.ZapSugar.Infoln("update order data in storage:", err)

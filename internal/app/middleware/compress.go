@@ -7,7 +7,7 @@ import (
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/compressing"
 )
 
-func HandlerWithGzipCompression(h http.HandlerFunc) http.HandlerFunc {
+func HandlerWithGzipCompression(h http.Handler) http.Handler {
 	contentTypeForCompression := [2]string{"application/json", "text/html"}
 	return http.HandlerFunc(
 		func(res http.ResponseWriter, req *http.Request) {

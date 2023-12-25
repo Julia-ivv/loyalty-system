@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
-	"github.com/Julia-ivv/loyalty-system.git/internal/app/models"
 	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -80,7 +79,7 @@ func (db *DBStorage) Close() error {
 	return db.dbHandle.Close()
 }
 
-func (db *DBStorage) RegUser(ctx context.Context, regData models.RequestRegData) error {
+func (db *DBStorage) RegUser(ctx context.Context, regData RequestRegData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -120,7 +119,7 @@ func (db *DBStorage) RegUser(ctx context.Context, regData models.RequestRegData)
 	return nil
 }
 
-func (db *DBStorage) AuthUser(ctx context.Context, authData models.RequestAuthData) error {
+func (db *DBStorage) AuthUser(ctx context.Context, authData RequestAuthData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -148,7 +147,7 @@ func (db *DBStorage) PostUserOrder(ctx context.Context, orderNumber string, user
 	result, err := db.dbHandle.ExecContext(ctx,
 		`INSERT INTO orders (user_id , order_number, order_status) 
 		VALUES ((SELECT user_id FROM users WHERE login = $1), $2, $3)`,
-		userLogin, orderNumber, models.NewOrder)
+		userLogin, orderNumber, NewOrder)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
@@ -179,7 +178,7 @@ func (db *DBStorage) PostUserOrder(ctx context.Context, orderNumber string, user
 	return nil
 }
 
-func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]models.ResponseOrder, error) {
+func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]ResponseOrder, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -194,9 +193,9 @@ func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]mod
 	}
 	defer rows.Close()
 
-	var respOrders []models.ResponseOrder
+	var respOrders []ResponseOrder
 	for rows.Next() {
-		var ord models.ResponseOrder
+		var ord ResponseOrder
 		err = rows.Scan(&ord.Number, &ord.UploadedTime, &ord.Status, &ord.Accrual)
 		if err != nil {
 			return nil, err
@@ -212,7 +211,7 @@ func (db *DBStorage) GetUserOrders(ctx context.Context, userLogin string) ([]mod
 	return respOrders, nil
 }
 
-func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (models.ResponseBalance, error) {
+func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (ResponseBalance, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -222,16 +221,16 @@ func (db *DBStorage) GetUserBalance(ctx context.Context, userLogin string) (mode
 		ON a.user_id = pu.user_id 
 		WHERE a.user_id = (SELECT user_id FROM users WHERE login = $1) 
 		GROUP BY a.balance`, userLogin)
-	var respBalance models.ResponseBalance
+	var respBalance ResponseBalance
 	err := row.Scan(&respBalance.PointsBalance, &respBalance.PointsUsed)
 	if err != nil {
-		return models.ResponseBalance{}, err
+		return ResponseBalance{}, err
 	}
 
 	return respBalance, nil
 }
 
-func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdrawData models.RequestWithdrawData) error {
+func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdrawData RequestWithdrawData) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -297,7 +296,7 @@ func (db *DBStorage) PostWithdraw(ctx context.Context, userLogin string, withdra
 	return tx.Commit()
 }
 
-func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) ([]models.ResponseWithdrawals, error) {
+func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) ([]ResponseWithdrawals, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
@@ -311,9 +310,9 @@ func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) (
 	}
 	defer rows.Close()
 
-	var respWithdraw []models.ResponseWithdrawals
+	var respWithdraw []ResponseWithdrawals
 	for rows.Next() {
-		var withdraw models.ResponseWithdrawals
+		var withdraw ResponseWithdrawals
 		err = rows.Scan(&withdraw.OrderNumber, &withdraw.WithdrawSum, &withdraw.WithdrawTime)
 		if err != nil {
 			return nil, err
@@ -329,7 +328,7 @@ func (db *DBStorage) GetUserWithdrawals(ctx context.Context, userLogin string) (
 	return respWithdraw, nil
 }
 
-func (db *DBStorage) UpdateUserAccrual(ctx context.Context, newData models.ResponseAccrual) error {
+func (db *DBStorage) UpdateUserAccrual(ctx context.Context, newData ResponseAccrual) error {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 

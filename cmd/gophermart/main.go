@@ -7,7 +7,6 @@ import (
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/config"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/handlers"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/logger"
-	"github.com/Julia-ivv/loyalty-system.git/internal/app/models"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/storage"
 )
 
@@ -24,14 +23,12 @@ func main() {
 	}
 	defer repo.Close()
 
-	const numOrders = 20
-	const numWorkers = 5
-	ordersChan := make(chan string, numOrders)
-	accrualsChan := make(chan models.ResponseAccrual, numOrders)
+	ordersChan := make(chan string, config.NumOrders)
+	accrualsChan := make(chan storage.ResponseAccrual, config.NumOrders)
 	accrualSystem := accrual.NewAccrualSystem(cfg.AccrualSystem, ordersChan, accrualsChan, repo)
 	defer close(ordersChan)
 	defer close(accrualsChan)
-	for w := 1; w <= numWorkers; w++ {
+	for w := 1; w <= config.NumWorkers; w++ {
 		go accrualSystem.Worker()
 	}
 	go accrualSystem.Updater()

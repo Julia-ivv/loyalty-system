@@ -30,7 +30,7 @@ func (res *logResponseWriter) WriteHeader(statusCode int) {
 	res.responseInfo.status = statusCode
 }
 
-func HandlerWithLogging(h http.HandlerFunc) http.HandlerFunc {
+func HandlerWithLogging(h http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(res http.ResponseWriter, req *http.Request) {
 			start := time.Now()
@@ -45,7 +45,7 @@ func HandlerWithLogging(h http.HandlerFunc) http.HandlerFunc {
 			uri := req.RequestURI
 			method := req.Method
 
-			h(&logResponseWriter, req)
+			h.ServeHTTP(&logResponseWriter, req)
 			duration := time.Since(start)
 
 			logger.ZapSugar.Infoln(

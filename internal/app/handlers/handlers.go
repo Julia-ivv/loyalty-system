@@ -11,7 +11,6 @@ import (
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/config"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/middleware"
-	"github.com/Julia-ivv/loyalty-system.git/internal/app/models"
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/storage"
 	"github.com/go-chi/chi"
 	"github.com/jackc/pgerrcode"
@@ -35,14 +34,18 @@ func NewHandlers(stor storage.Repositorier, cfg config.Flags, accSyst accrual.Ac
 func NewURLRouter(repo storage.Repositorier, cfg config.Flags, accSyst accrual.AccrualSystem) chi.Router {
 	hs := NewHandlers(repo, cfg, accSyst)
 	r := chi.NewRouter()
-	r.Route("/", func(r chi.Router) {
-		r.Post("/api/user/register", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(hs.userRegistration)))
-		r.Post("/api/user/login", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(hs.userAuthentication)))
-		r.Post("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.postUserOrder))))
-		r.Get("/api/user/orders", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.getUserOrders))))
-		r.Get("/api/user/balance", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.getUserBalance))))
-		r.Post("/api/user/balance/withdraw", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.postWithdraw))))
-		r.Get("/api/user/withdrawals", middleware.HandlerWithLogging(middleware.HandlerWithGzipCompression(middleware.HandlerWithAuth(hs.GetUserWithdrawals))))
+	r.Use(middleware.HandlerWithLogging, middleware.HandlerWithGzipCompression)
+	r.Group(func(r chi.Router) {
+		r.Post("/api/user/register", hs.userRegistration)
+		r.Post("/api/user/login", hs.userAuthentication)
+	})
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.HandlerWithAuth)
+		r.Post("/api/user/orders", hs.postUserOrder)
+		r.Get("/api/user/orders", hs.getUserOrders)
+		r.Get("/api/user/balance", hs.getUserBalance)
+		r.Post("/api/user/balance/withdraw", hs.postWithdraw)
+		r.Get("/api/user/withdrawals", hs.GetUserWithdrawals)
 	})
 
 	return r
@@ -60,7 +63,7 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	var reqRegData models.RequestRegData
+	var reqRegData storage.RequestRegData
 	err = json.Unmarshal(reqBody, &reqRegData)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
@@ -73,13 +76,12 @@ func (h *Handlers) userRegistration(res http.ResponseWriter, req *http.Request) 
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
 			http.Error(res, err.Error(), http.StatusConflict)
 			return
-		} else {
-			http.Error(res, err.Error(), http.StatusInternalServerError)
-			return
 		}
+		http.Error(res, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	err = h.stor.AuthUser(req.Context(), models.RequestAuthData(reqRegData))
+	err = h.stor.AuthUser(req.Context(), storage.RequestAuthData(reqRegData))
 	if err != nil {
 		var authErr *authorizer.AuthErr
 		if (errors.As(err, &authErr)) && (authErr.ErrType == authorizer.InvalidHash) {
@@ -118,7 +120,7 @@ func (h *Handlers) userAuthentication(res http.ResponseWriter, req *http.Request
 		return
 	}
 
-	var reqAuthData models.RequestAuthData
+	var reqAuthData storage.RequestAuthData
 	err = json.Unmarshal(reqBody, &reqAuthData)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusBadRequest)
@@ -267,7 +269,7 @@ func (h *Handlers) postWithdraw(res http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var reqData models.RequestWithdrawData
+	var reqData storage.RequestWithdrawData
 	err = json.Unmarshal(reqJSON, &reqData)
 	if err != nil {
 		http.Error(res, err.Error(), http.StatusInternalServerError)

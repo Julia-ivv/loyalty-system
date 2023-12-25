@@ -12,6 +12,11 @@ type Flags struct {
 	AccrualSystem string `env:"ACCRUAL_SYSTEM_ADDRESS"` // -r адрес системы расчета начислений, http://localhost:9090
 }
 
+const (
+	NumOrders  = 20
+	NumWorkers = 5
+)
+
 func NewConfig() *Flags {
 	c := &Flags{}
 

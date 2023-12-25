@@ -7,7 +7,7 @@ import (
 	"github.com/Julia-ivv/loyalty-system.git/internal/app/authorizer"
 )
 
-func HandlerWithAuth(h http.HandlerFunc) http.HandlerFunc {
+func HandlerWithAuth(h http.Handler) http.Handler {
 	return http.HandlerFunc(
 		func(res http.ResponseWriter, req *http.Request) {
 			token, err := req.Cookie(authorizer.AccessToken)
